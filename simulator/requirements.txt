@@ -1,0 +1,5 @@
+numpy>=1.26
+pandas>=2.1
+pytest>=8
+# Etapa 2 (Kafka):
+confluent-kafka>=2.3
