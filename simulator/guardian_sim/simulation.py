@@ -24,7 +24,10 @@ from .dealer import Dealer, DealContext
 from .profiles import Traits, sample_profile, sample_traits
 
 SCHEMA_VERSION = 1
-MAX_REVIVES = {"neutral": 1, "predatory": 2}
+MAX_REVIVES = {"neutral": 1, "predatory": 2, "guarded": 2}
+# "guarded" = el mismo juego depredador, con el guardián activo (tercer mundo).
+DEALER_POLICY = {"neutral": "neutral", "predatory": "predatory", "guarded": "predatory"}
+PREDATORY = {"predatory", "guarded"}
 MAX_DEALS_PER_GAME = 400
 MAX_GAMES_PER_SESSION = 40
 INTERSTITIAL_EVERY = 3            # un intersticial cada N partidas (ambas políticas)
@@ -36,14 +39,62 @@ CHURN_AFTER_ABSENT_DAYS = 3
 
 
 class Interventions:
-    """Interfaz para las acciones del guardián (se conecta en la etapa 4).
+    """Interfaz para las acciones del guardián. Por defecto no hace nada.
 
     Acciones: "block_manipulation" (el dealer no aplica reglas depredadoras),
     "suggest_break" (se sugiere terminar la sesión), "spend_limit" (sin compras).
     """
 
+    def for_player(self, player: "Player") -> "Interventions":
+        return self
+
+    def observe(self, event: dict) -> None:
+        pass
+
+    def pre_deal(self, game_id: str, score: int, high_score: int, loaded_ecpm: float,
+                 deal_num: int, board_hex: str) -> tuple[bool, float | None]:
+        return False, None
+
     def active(self, player_id: str, ts: float) -> set[str]:
         return set()
+
+
+class GuardianInterventions(Interventions):
+    """Guardián embebido: el mismo modelo y variables que el servicio de Kafka,
+    pero decidiendo ANTES de cada reparto (como lo haría el backend del juego).
+    El estado de cada jugador viaja en Player.guard_state entre días y procesos."""
+
+    def __init__(self, model_uri: str, threshold: float | None = None):
+        self.model_uri = model_uri
+        self.threshold = threshold
+        self._guardian = None
+        self._st = None
+        self._pid = None
+
+    def _g(self):
+        if self._guardian is None:
+            from guardian_ml.guardian import Guardian
+            from guardian_ml.model import RiskModel
+            self._guardian = Guardian(RiskModel.load(self.model_uri), self.threshold)
+        return self._guardian
+
+    def for_player(self, player: "Player") -> "GuardianInterventions":
+        from guardian_ml.guardian import GuardState
+        if player.guard_state is None:
+            player.guard_state = GuardState()
+        bound = GuardianInterventions(self.model_uri, self.threshold)
+        bound._guardian, bound._st, bound._pid = self._g(), player.guard_state, player.player_id
+        return bound
+
+    def observe(self, event: dict) -> None:
+        self._g().observe(event, self._st, score_deals=False)
+
+    def pre_deal(self, game_id, score, high_score, loaded_ecpm, deal_num, board_hex):
+        return self._g().pre_deal(self._st, game_id, score, high_score, loaded_ecpm,
+                                  deal_num, board_hex)
+
+    def active(self, player_id: str, ts: float) -> set[str]:
+        return set(self._st.session_actions) if self._st else set()
 
 
 @dataclass
@@ -68,6 +119,7 @@ class Player:
     unfair_yesterday: int = 0
     churned: bool = False
     event_seq: int = 0
+    guard_state: object = None    # estado del guardián embebido (solo política guarded)
 
     def observable(self, install_ts: float) -> dict:
         return {"player_id": self.player_id, "country": self.country,
@@ -113,7 +165,7 @@ class _DayRun:
         self.p = player
         self.rng = player.rng
         self.brain = Brain(player.traits)
-        self.dealer = Dealer(player.policy)
+        self.dealer = Dealer(DEALER_POLICY[player.policy])
         self.slots = ads.AdSlots(ads.base_ecpm(player.country, player.platform, player.device_tier))
         self.day_start = day_start
         self.iv = interventions
@@ -133,6 +185,7 @@ class _DayRun:
             "player_id": self.p.player_id, "session_id": self.session_id,
             "game_id": self.game_id, "policy": self.p.policy, "source": "sim",
             "schema_version": SCHEMA_VERSION, **payload})
+        self.iv.observe(self.events[-1])
 
     def tick(self, seconds: float) -> None:
         self.clock += seconds
@@ -192,6 +245,7 @@ class _DayRun:
         recent_secs: list[float] = []
         self.emit("game_start", game_num=p.games_played + 1, high_score=p.high_score)
         lost_near_record = False
+        guard_announced = False
 
         while deals < MAX_DEALS_PER_GAME:
             self.slots.maybe_refresh(rng)
@@ -201,6 +255,14 @@ class _DayRun:
                               loaded_rewarded_ecpm=self.slots.rewarded_ecpm,
                               recent_turn_secs=recent_secs, deal_num=deals)
             blocked = "block_manipulation" in self.iv.active(p.player_id, self.clock)
+            guard, risk = self.iv.pre_deal(self.game_id, score, p.high_score,
+                                           self.slots.rewarded_ecpm, deals + 1,
+                                           engine.board_hex(board))
+            if guard and not blocked and not guard_announced:
+                guard_announced = True
+                self.emit("intervention_applied", action="block_manipulation",
+                          risk=round(risk, 5))
+            blocked = blocked or guard
             deal = self.dealer.deal(ctx, state, rng, blocked=blocked)
             deals += 1
             deal_id = f"{self.game_id}-d{deals}"
@@ -212,6 +274,7 @@ class _DayRun:
                 "deal_id": deal_id, "player_id": p.player_id, "game_id": self.game_id,
                 "ts": self.clock, "policy": p.policy, "kind": deal.kind, "rule": deal.rule,
                 "suppressed_rule": deal.suppressed_rule, "forced": deal.kind == "lethal",
+                "guardian_risk": None if risk is None else round(risk, 5),
                 "solvable": engine.solvable(board, deal.pieces)})
 
             # El agente juega la mano.
@@ -310,7 +373,7 @@ class _DayRun:
                 self.unfair_today += 1
         # Ofertas de la tienda.
         prob = BASE_OFFER_PROB
-        if p.policy == "predatory" and lost_near_record and not new_record:
+        if p.policy in PREDATORY and lost_near_record and not new_record:
             prob = PREDATORY_OFFER_PROB
         if rng.random() < prob:
             k = min(len(OFFERS) - 1, int(rng.integers(0, 2) + 2 * p.traits.spend * 2))
@@ -348,7 +411,7 @@ def simulate_player_day(player: Player, day: int, day_start: float,
                 player.churned = True
             return player, [], []
     player.days_absent = 0
-    run = _DayRun(player, day_start, interventions or Interventions())
+    run = _DayRun(player, day_start, (interventions or Interventions()).for_player(player))
     run.run()
     player.unfair_yesterday = run.unfair_today
     return player, run.events, run.labels

@@ -4,7 +4,8 @@
    las que se pasen a mano en el parámetro "fechas".
 2. subir_codigo: copia los jobs de Spark a s3://…/code/.
 3. crear_emr: levanta un clúster EMR (se apaga solo tras 1 h ocioso).
-4. pasos_spark: bronce→plata y plata→oro, con registro en el Glue Data Catalog.
+4. pasos_spark: bronce→plata, plata→oro y variables del guardián (gold/deal_features),
+   con registro en el Glue Data Catalog.
 5. esperar_*: sensores de cada paso.
 6. apagar_emr: SIEMPRE se ejecuta, falle lo que falle (trigger_rule all_done).
 7. validar_calidad: lee los reportes de calidad y falla si hay demasiados inválidos.
@@ -107,6 +108,13 @@ with DAG(
         step_id="{{ ti.xcom_pull(task_ids='pasos_spark')[1] }}",
         aws_conn_id="aws_default", mode="reschedule", poke_interval=60, timeout=2 * 3600,
     )
+    esperar_variables = EmrStepSensor(
+        task_id="esperar_variables_guardian",
+        job_flow_id=crear.output,
+        step_id="{{ ti.xcom_pull(task_ids='pasos_spark')[2] }}",
+        aws_conn_id="aws_default", mode="reschedule", poke_interval=60, timeout=2 * 3600,
+    )
+
     @task(trigger_rule="all_done")
     def apagar_emr(ti=None) -> None:
         """Apaga el clúster pase lo que pase; si nunca se creó, no hace nada."""
@@ -130,5 +138,5 @@ with DAG(
             raise ValueError("Problemas de calidad:\n" + "\n".join(problems))
 
     [fechas, codigo] >> crear
-    pasos >> esperar_plata >> esperar_oro >> apagar
-    esperar_oro >> validar_calidad(fechas)
+    pasos >> esperar_plata >> esperar_oro >> esperar_variables >> apagar
+    esperar_variables >> validar_calidad(fechas)

@@ -20,7 +20,7 @@ Qué crear en la consola, en qué orden, y cómo correr el pipeline. Todo en la 
 | Security group | 1 | Ustedes, una vez (paso A4) |
 | EC2 `guardian-host` | 1 | Ustedes, una vez (paso A5) |
 | Clúster EMR | 1 por ejecución del ETL | **Airflow**, y lo apaga al terminar |
-| Base de datos y tablas de Glue | 1 base, 10 tablas | **Spark**, automáticamente |
+| Base de datos y tablas de Glue | 1 base, 11 tablas | **Spark**, automáticamente |
 | Roles IAM | Los del laboratorio | Ya existen, solo se verifican (paso A3) |
 
 ---
@@ -236,7 +236,20 @@ FROM guardian.gold_forced_deals_daily
 GROUP BY policy, rule ORDER BY forzados DESC;
 ```
 
-### C5. Antes de cerrar
+### C5. El guardián (etapa 4)
+
+1. **Entrenar.** Airflow → `guardian_entrenamiento` → Trigger. Usa las variables que dejó el ETL en `gold/deal_features`. Si el modelo pasa la validación, queda en `s3://<bucket>/guardian/models/guardian/latest/`.
+2. **Servicio en streaming:**
+   ```bash
+   cd ~/guardian-si3008/infra/kafka
+   nano .env        # MODEL_URI=s3://<bucket>/guardian/models/guardian/latest
+   docker compose --profile guardian up -d --build guardian-scorer
+   ```
+3. **Tercer mundo:** `guardian_carga_batch` con `politica = guarded`, y después `guardian_etl`. En Athena, `gold_harm_daily` muestra las tres políticas.
+
+Detalle y resultados: [etapa4_guardian.md](etapa4_guardian.md).
+
+### C6. Antes de cerrar
 
 - **EMR → Clusters:** que no quede ninguno en *Waiting* o *Running*. Airflow los apaga, y además se apagan solos tras 1 hora ociosos, pero revisen.
 - La EC2 se detiene sola al terminar la sesión; no hace falta borrarla.

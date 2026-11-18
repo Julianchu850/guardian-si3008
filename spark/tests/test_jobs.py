@@ -45,6 +45,7 @@ def lake(tmp_path_factory):
         f.write('{"event_id": roto\n' + first + "\n")
     _submit("bronze_to_silver.py", "--lake", str(lake), "--dates", DT, "--dims", cwd=lake)
     _submit("silver_to_gold.py", "--lake", str(lake), "--dates", DT, cwd=lake)
+    _submit("deal_features.py", "--lake", str(lake), "--dates", DT, cwd=lake)
     return lake
 
 
@@ -81,3 +82,16 @@ def test_silver_has_dimensions_and_labels(lake):
         assert (lake / "silver" / table).exists(), table
     labels = pd.read_parquet(lake / "silver/deal_labels")
     assert labels[labels.policy == "neutral"].forced.sum() == 0
+
+
+def test_deal_features_match_streaming_definition(lake):
+    """Las variables de Spark (entrenamiento) = las del guardián en streaming."""
+    sys.path.insert(0, str(ROOT / "guardian_ml"))
+    from guardian_ml.features import FEATURES, features_from_events
+    events = pd.concat([_raw(lake, "game-events"), _raw(lake, "ad-events")]).to_dict("records")
+    py = pd.DataFrame(features_from_events(events)).set_index(["deal_id", "policy"]).sort_index()
+    sp = pd.read_parquet(lake / "gold/deal_features").set_index(["deal_id", "policy"]).sort_index()
+    assert len(py) == len(sp) > 100
+    for f in FEATURES:
+        assert py[f].to_numpy() == pytest.approx(sp.loc[py.index, f].astype(float).to_numpy()), f
+    assert set(sp.columns) >= {"forced", "rule"}

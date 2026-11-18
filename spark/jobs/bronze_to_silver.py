@@ -49,7 +49,7 @@ def process_topic(spark, lake: str, topic: str, dt: str) -> dict:
               .when(~F.col("event_type").isin(VALID_TYPES[topic]), "tipo_desconocido")
               .when(ts.isNull(), "ts_invalido")
               .when(F.to_date(ts) != F.lit(dt).cast("date"), "fecha_no_coincide")
-              .when(~F.col("policy").isin("neutral", "predatory"), "politica_desconocida"))
+              .when(~F.col("policy").isin("neutral", "predatory", "guarded"), "politica_desconocida"))
     tagged = raw.withColumn("_reason", reason)
 
     bad = tagged.filter(F.col("_reason").isNotNull())

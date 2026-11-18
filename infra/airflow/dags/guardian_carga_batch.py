@@ -32,7 +32,8 @@ with DAG(
                                    description="Correr el simulador antes de subir"),
         "jugadores": Param(300, type="integer", minimum=10, maximum=5000),
         "dias": Param(7, type="integer", minimum=1, maximum=60),
-        "politica": Param("split", enum=["split", "neutral", "predatory"]),
+        "politica": Param("split", enum=["split", "neutral", "predatory", "guarded"],
+                          description="guarded = depredador con el guardián (usa models/guardian/latest)"),
         "semilla": Param(42, type="integer"),
         "fecha_inicio": Param("2026-11-16", type="string", format="date"),
     },
@@ -49,6 +50,7 @@ with DAG(
             "--players {{ params.jugadores }} --days {{ params.dias }} "
             "--policy {{ params.politica }} --seed {{ params.semilla }} "
             "--start-date {{ params.fecha_inicio }} --sink files --workers 2 "
+            "--guardian-model {{ var.value.guardian_lake }}/models/guardian/latest "
             f"--out {DATA}/historico-{{{{ params.politica }}}}-s{{{{ params.semilla }}}}"
         ),
     )

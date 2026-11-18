@@ -1,0 +1,7 @@
+**/tests/
+**/__pycache__/
+**/.pytest_cache/
+data/
+.git/
+infra/airflow/logs/
+**/.env

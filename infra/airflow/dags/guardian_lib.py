@@ -150,7 +150,44 @@ def spark_steps(lake: str, code_uri: str, dates: list[str], glue: bool = True,
                     *common, *extra]}}
 
     return [step("bronce→plata", "bronze_to_silver.py", ["--dims"] if dims else []),
-            step("plata→oro", "silver_to_gold.py", [])]
+            step("plata→oro", "silver_to_gold.py", []),
+            step("variables guardián", "deal_features.py", [])]
+
+
+# --------------------------------------------------------------------------
+# Modelo del guardián
+# --------------------------------------------------------------------------
+def download_prefix(client, lake: str, rel_prefix: str, local_dir: str | Path,
+                    dates: list[str] | None = None) -> int:
+    """Descarga los Parquet de lake/rel_prefix (opcionalmente solo algunas fechas)."""
+    bucket, prefix = parse_s3_uri(lake)
+    base = _join(prefix, rel_prefix) + "/"
+    n = 0
+    for page in client.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=base):
+        for obj in page.get("Contents", []):
+            rel = obj["Key"][len(base):]
+            if not rel.endswith(".parquet"):
+                continue
+            m = DT_RE.search("/" + rel)
+            if dates and (not m or m.group(1) not in dates):
+                continue
+            dest = Path(local_dir) / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            client.download_file(bucket, obj["Key"], str(dest))
+            n += 1
+    return n
+
+
+def publish_model(client, local_dir: str | Path, lake: str, version: str) -> list[str]:
+    """Sube el modelo a models/guardian/v=<versión>/ y lo copia a latest/."""
+    bucket, prefix = parse_s3_uri(lake)
+    uris = []
+    for target in (f"v={version}", "latest"):
+        for f in sorted(Path(local_dir).iterdir()):
+            key = _join(prefix, "models", "guardian", target, f.name)
+            client.upload_file(str(f), bucket, key)
+        uris.append(f"s3://{bucket}/{_join(prefix, 'models', 'guardian', target)}")
+    return uris
 
 
 # --------------------------------------------------------------------------

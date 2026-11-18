@@ -23,7 +23,7 @@ La clave de cada mensaje en Kafka es `player_id`, para que los eventos de un mis
 | `player_id` | string | Jugador anónimo: `p<semilla>-<número>`. Con la misma semilla, los dos mundos tienen los mismos jugadores |
 | `session_id` | string | `p42-00017-s7` |
 | `game_id` | string o null | `p42-00017-g31`; null fuera de una partida |
-| `policy` | string | `neutral` o `predatory` (brazo del experimento) |
+| `policy` | string | `neutral`, `predatory` o `guarded` (depredador con guardián): brazo del experimento |
 | `source` | string | `sim` o `human` (juego web, etapa 6) |
 | `schema_version` | int | 1 |
 
@@ -40,7 +40,7 @@ La clave de cada mensaje en Kafka es `player_id`, para que los eventos de un mis
 | `revive_response` | game | `accepted` |
 | `revive` | game | `revives_used`, `board` |
 | `game_end` | game | `final_score`, `high_score`, `new_record`, `deals`, `revives_used` |
-| `intervention_applied` | game | `action` |
+| `intervention_applied` | game | `action` (`block_manipulation`, `suggest_break`), `risk` |
 | `session_end` | game | `games`, `duration_s` |
 | `ad_impression` | ads | `ad_type` (rewarded/interstitial), `placement`, `ecpm`, `revenue_usd`, `completed`, `watch_ms` |
 | `reward_offer` | ads | `placement`, `accepted`, `rewarded_ecpm_loaded` |
@@ -67,3 +67,21 @@ La clave de cada mensaje en Kafka es `player_id`, para que los eventos de un mis
 ## Por qué la separación importa
 
 Si el modelo viera `forced` o los rasgos latentes, aprendería la respuesta en lugar de detectarla (fuga de datos). El guardián solo ve lo que vería un auditor externo: tablero, piezas, puntajes, tiempos y anuncios.
+
+## Tópico `interventions` (etapa 4)
+
+Lo publica el servicio `guardian-scorer`; el bronze-sink lo archiva en `bronze/interventions/`. Clave: `player_id`.
+
+| Campo | Descripción |
+|---|---|
+| `intervention_id` | `<event_id que la disparó>-<acción>` |
+| `ts` | Hora del evento que la disparó |
+| `player_id`, `policy`, `session_id`, `game_id` | Contexto |
+| `trigger_event_id` | Evento que la disparó |
+| `action` | `block_manipulation`, `suggest_break` o `spend_limit` |
+| `risk`, `threshold` | Riesgo estimado y umbral del modelo (null en reglas de sesión) |
+| `reason` | Explicación corta |
+| `model_version` | Versión del modelo que decidió |
+
+La verdad terreno (`deal_labels`) incluye además `guardian_risk`: el riesgo que calculó el guardián embebido antes de cada reparto.
+

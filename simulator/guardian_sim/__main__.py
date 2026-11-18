@@ -24,10 +24,10 @@ from .sinks import FileSink, KafkaSink, MultiSink
 
 
 def _chunk_day(args):
-    players, day, start = args
+    players, day, start, interventions = args
     out_players, events, labels = [], [], []
     for p in players:
-        p, e, lab = simulate_player_day(p, day, start)
+        p, e, lab = simulate_player_day(p, day, start, interventions)
         out_players.append(p)
         events.extend(e)
         labels.extend(lab)
@@ -39,7 +39,12 @@ def main(argv=None) -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--players", type=int, default=300)
     ap.add_argument("--days", type=int, default=7)
-    ap.add_argument("--policy", choices=["neutral", "predatory", "split"], default="split")
+    ap.add_argument("--policy", choices=["neutral", "predatory", "guarded", "split"], default="split",
+                    help="guarded = juego depredador con el guardián embebido (requiere --guardian-model)")
+    ap.add_argument("--guardian-model", default="",
+                    help="carpeta local o s3://… con model.joblib (etapa 4)")
+    ap.add_argument("--guardian-threshold", type=float, default=None,
+                    help="umbral de riesgo; por defecto el elegido al entrenar")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--start-date", default="2026-11-16")
     ap.add_argument("--out", default="../data")
@@ -56,6 +61,13 @@ def main(argv=None) -> None:
     files = FileSink(args.out, run_id, events=args.sink in ("files", "both"))
     kafka = KafkaSink(args.bootstrap, args.speed) if args.sink in ("kafka", "both") else None
     sink = MultiSink(*[s for s in (files, kafka) if s])
+
+    interventions = None
+    if args.policy == "guarded":
+        if not args.guardian_model:
+            ap.error("--policy guarded requiere --guardian-model")
+        from .simulation import GuardianInterventions
+        interventions = GuardianInterventions(args.guardian_model, args.guardian_threshold)
 
     players = create_players(args.players, args.policy, args.seed, args.days)
     files.write_table(f"batch/players/part-{run_id}.jsonl",
@@ -74,7 +86,7 @@ def main(argv=None) -> None:
             start = day_start_ts(args.start_date, day)
             chunks = [players[i::n_chunks] for i in range(n_chunks)]
             players, events, labels = [], [], []
-            for ps, ev, lab in pool.map(_chunk_day, [(c, day, start) for c in chunks]):
+            for ps, ev, lab in pool.map(_chunk_day, [(c, day, start, interventions) for c in chunks]):
                 players.extend(ps)
                 events.extend(ev)
                 labels.extend(lab)

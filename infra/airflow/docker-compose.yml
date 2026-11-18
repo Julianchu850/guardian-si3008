@@ -34,12 +34,13 @@ x-airflow-common: &airflow-common
     AIRFLOW_VAR_GUARDIAN_EMR_CORE_COUNT: ${EMR_CORE_COUNT:-2}
     AIRFLOW_VAR_GUARDIAN_EMR_SUBNET: ${EMR_SUBNET:-}
     AIRFLOW_VAR_GUARDIAN_EMR_KEY: ${EMR_KEY:-}
-    PYTHONPATH: /opt/airflow/dags:/opt/guardian/simulator
+    PYTHONPATH: /opt/airflow/dags:/opt/guardian/simulator:/opt/guardian/guardian_ml
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ../../spark:/opt/guardian/spark:ro
     - ../../simulator:/opt/guardian/simulator:ro
+    - ../../guardian_ml:/opt/guardian/guardian_ml:ro
     - ${GUARDIAN_DATA:-/home/ec2-user/guardian-data}:/opt/guardian-data
   depends_on: &airflow-depends
     postgres:

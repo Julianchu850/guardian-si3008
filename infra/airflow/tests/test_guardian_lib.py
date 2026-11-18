@@ -68,6 +68,8 @@ def test_job_flow_config_and_steps():
                         "s3://guardian-lake/guardian/code/common.py"]
     assert "--dims" in args and args[args.index("--dates") + 1] == "2026-11-16,2026-11-17"
     assert "--dims" not in steps[1]["HadoopJarStep"]["Args"]
+    assert [s["HadoopJarStep"]["Args"][5].rsplit("/", 1)[1] for s in steps] == [
+        "bronze_to_silver.py", "silver_to_gold.py", "deal_features.py"]
     assert all(s["ActionOnFailure"] == "CONTINUE" for s in steps)
 
 
@@ -84,3 +86,21 @@ def test_quality(s3):
     assert lib.quality_problems(reports, ["2026-11-16"], 0.05) == []
     probs = lib.quality_problems(reports, ["2026-11-16", "2026-11-17"], 0.01)
     assert len(probs) == 2 and "2026-11-17" in probs[0] and "2.0%" in probs[1]
+
+
+def test_download_prefix_and_publish_model(s3, tmp_path):
+    put(s3, "gold/deal_features/dt=2026-11-16/part-0.parquet", b"a")
+    put(s3, "gold/deal_features/dt=2026-11-17/part-0.parquet", b"b")
+    put(s3, "gold/deal_features/_SUCCESS")
+    assert lib.download_prefix(s3, LAKE, "gold/deal_features", tmp_path / "all") == 2
+    assert lib.download_prefix(s3, LAKE, "gold/deal_features", tmp_path / "one", ["2026-11-17"]) == 1
+    assert (tmp_path / "one/dt=2026-11-17/part-0.parquet").read_bytes() == b"b"
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "model.joblib").write_bytes(b"m")
+    (model / "metrics.json").write_text("{}")
+    uris = lib.publish_model(s3, model, LAKE, "20261118T000000Z")
+    assert uris == ["s3://guardian-lake/guardian/models/guardian/v=20261118T000000Z",
+                    "s3://guardian-lake/guardian/models/guardian/latest"]
+    keys = {o["Key"] for o in s3.list_objects_v2(Bucket="guardian-lake", Prefix="guardian/models/")["Contents"]}
+    assert "guardian/models/guardian/latest/model.joblib" in keys and len(keys) == 4
