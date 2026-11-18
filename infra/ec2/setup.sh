@@ -21,3 +21,6 @@ if [ ! -d /home/ec2-user/guardian-si3008 ]; then
   sudo -u ec2-user git clone https://github.com/Julianchu850/guardian-si3008.git \
     /home/ec2-user/guardian-si3008
 fi
+
+# Carpeta compartida entre el simulador (Kafka) y Airflow
+sudo -u ec2-user mkdir -p /home/ec2-user/guardian-data/sim

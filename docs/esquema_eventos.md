@@ -6,9 +6,9 @@
 |---|---|---|---|
 | Eventos de juego | Sí, tópico `game-events` | `bronze/game-events/dt=AAAA-MM-DD/hr=HH/` | Sí |
 | Eventos de anuncios y tienda | Sí, tópico `ad-events` | `bronze/ad-events/dt=…/hr=…/` | Sí |
-| Jugadores (datos observables) | No, carga batch | `batch/players/players.jsonl` | Sí |
+| Jugadores (datos observables) | No, carga batch | `batch/players/part-<corrida>.jsonl` | Sí |
 | Catálogo de piezas y ofertas | No, carga batch | `batch/catalog/` | Sí |
-| Verdad terreno de jugadores | No | `truth/players_truth.jsonl` | **No**, solo evaluación |
+| Verdad terreno de jugadores | No | `truth/players_truth/part-<corrida>.jsonl` | **No**, solo evaluación |
 | Verdad terreno de repartos | No | `truth/deal_labels/dt=…/` | **No como variable**; es la etiqueta |
 
 La clave de cada mensaje en Kafka es `player_id`, para que los eventos de un mismo jugador caigan en la misma partición y lleguen en orden.
@@ -17,12 +17,12 @@ La clave de cada mensaje en Kafka es `player_id`, para que los eventos de un mis
 
 | Campo | Tipo | Descripción |
 |---|---|---|
-| `event_id` | string | Único: `p00042-1234` |
+| `event_id` | string | Único: `p42-00017-1234` (jugador + secuencia) |
 | `event_type` | string | Ver tabla siguiente |
 | `ts` | string ISO-8601 UTC | Hora simulada del evento |
-| `player_id` | string | Jugador anónimo |
-| `session_id` | string | `p00042-s7` |
-| `game_id` | string o null | `p00042-g31`; null fuera de una partida |
+| `player_id` | string | Jugador anónimo: `p<semilla>-<número>`. Con la misma semilla, los dos mundos tienen los mismos jugadores |
+| `session_id` | string | `p42-00017-s7` |
+| `game_id` | string o null | `p42-00017-g31`; null fuera de una partida |
 | `policy` | string | `neutral` o `predatory` (brazo del experimento) |
 | `source` | string | `sim` o `human` (juego web, etapa 6) |
 | `schema_version` | int | 1 |

@@ -1,0 +1,124 @@
+# Etapa 3 — Airflow 3 con LocalExecutor (sin Celery ni Redis, para caber en la EC2).
+#
+#   ./init-env.sh                 # crea .env con claves aleatorias (una sola vez)
+#   docker compose up -d --build
+#   UI: http://<ip-publica>:8081  (usuario y clave en .env)
+#
+# Corre en la misma EC2 que Kafka (etapa 2). La UI usa el 8081 porque Kafka UI usa el 8080.
+
+name: guardian-airflow
+
+x-airflow-common: &airflow-common
+  build: .
+  image: guardian-airflow:3.3.2
+  user: "${AIRFLOW_UID:-50000}:0"
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?falta AIRFLOW_JWT_SECRET, corre ./init-env.sh}
+    AIRFLOW__API__SECRET_KEY: ${AIRFLOW_JWT_SECRET}
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL: "30"
+    # Conexión AWS: sin claves; usa el rol de la EC2 (LabInstanceProfile).
+    AIRFLOW_CONN_AWS_DEFAULT: '{"conn_type": "aws", "extra": {"region_name": "${AWS_DEFAULT_REGION:-us-east-1}"}}'
+    AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+    # Variables del proyecto (Admin → Variables las muestra; se cambian aquí).
+    AIRFLOW_VAR_GUARDIAN_LAKE: ${GUARDIAN_LAKE:?falta GUARDIAN_LAKE en .env}
+    AIRFLOW_VAR_GUARDIAN_EMR_RELEASE: ${EMR_RELEASE:-emr-7.2.0}
+    AIRFLOW_VAR_GUARDIAN_EMR_INSTANCE_TYPE: ${EMR_INSTANCE_TYPE:-m5.xlarge}
+    AIRFLOW_VAR_GUARDIAN_EMR_CORE_COUNT: ${EMR_CORE_COUNT:-2}
+    AIRFLOW_VAR_GUARDIAN_EMR_SUBNET: ${EMR_SUBNET:-}
+    AIRFLOW_VAR_GUARDIAN_EMR_KEY: ${EMR_KEY:-}
+    PYTHONPATH: /opt/airflow/dags:/opt/guardian/simulator
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ../../spark:/opt/guardian/spark:ro
+    - ../../simulator:/opt/guardian/simulator:ro
+    - ${GUARDIAN_DATA:-/home/ec2-user/guardian-data}:/opt/guardian-data
+  depends_on: &airflow-depends
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+
+  airflow-init:
+    <<: *airflow-common
+    user: "0:0"
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -p /opt/airflow/logs
+        chown -R "${AIRFLOW_UID:-50000}:0" /opt/airflow/logs
+        exec /entrypoint airflow version
+    environment:
+      <<: *airflow-env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?falta AIRFLOW_ADMIN_PASSWORD}
+    restart: "no"
+
+  airflow-apiserver:
+    <<: *airflow-common
+    command: api-server
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      <<: *airflow-depends
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      <<: *airflow-depends
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    restart: unless-stopped
+    depends_on:
+      <<: *airflow-depends
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  postgres-data:

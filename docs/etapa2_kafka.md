@@ -55,8 +55,11 @@ Desde la EC2, con el simulador en un contenedor:
 
 ```bash
 docker compose --profile sim run --rm simulator \
-  --sink kafka --bootstrap kafka:29092 --players 200 --days 2 --speed 3600 --policy split
+  --sink kafka --bootstrap kafka:29092 --out /out/stream-split-s7 \
+  --players 200 --days 2 --speed 3600 --policy split --seed 7 --start-date 2026-11-23
 ```
+
+`--out` deja las dimensiones (jugadores) y la verdad terreno de la corrida en `~/guardian-data/sim/`, para que Airflow las suba en la etapa 3. Usa una semilla y fechas distintas a las del histórico batch para que no se mezclen las corridas.
 
 O desde tu portátil, con el puerto 9092 abierto para tu IP:
 

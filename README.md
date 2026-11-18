@@ -4,6 +4,8 @@ Sistema de datos intensivos que simula un juego tipo Block Blast con monetizaci�
 
 Proyecto final de SI3008 Sistemas Intensivos en Datos (EAFIT). Stack exigido: **Kafka** para streaming y **Airflow** para orquestación, sobre AWS (S3 y EMR).
 
+**Para montarlo en AWS: [guía paso a paso del Learner Lab](docs/guia_aws_lab.md).**
+
 Caso de referencia: Omolewa, A. (2026). *How Block Blast harvests its players for ad money*. https://ayoships.com/breakdowns/block-blast
 
 ## Etapas
@@ -12,7 +14,7 @@ Caso de referencia: Omolewa, A. (2026). *How Block Blast harvests its players fo
 |---|---|---|
 | **1. Simulador** | Motor del juego, políticas, agentes con perfiles, eventos | ✅ Lista |
 | **2. Ingesta streaming** | Kafka (KRaft) en Docker sobre EC2, productor y consumidor a S3 bronce | ✅ Lista: [guía](docs/etapa2_kafka.md) |
-| 3. Batch y orquestación | Airflow en Docker: DAGs de carga, EMR/Spark bronce → plata → oro | Pendiente |
+| **3. Batch y orquestación** | Airflow 3 en Docker: carga batch a S3 y ETL en EMR/Spark bronce → plata → oro, con calidad y catálogo Glue | ✅ Lista |
 | 4. Guardián (ML) | Variables, modelo de riesgo, scoring con Spark Structured Streaming, tópico `interventions` | Pendiente |
 | 5. Dashboard | Comparación "dos mundos" sobre la capa oro (Athena) | Pendiente |
 | 6. Juego web (opcional) | FastAPI + navegador en EC2 para jugadores reales (`source = human`) | Pendiente |
@@ -22,12 +24,15 @@ Caso de referencia: Omolewa, A. (2026). *How Block Blast harvests its players fo
 ```
 guardian-si3008/
 ├── docs/
+│   ├── guia_aws_lab.md          # qué crear en el Learner Lab y cómo correr todo
 │   ├── esquema_eventos.md       # contrato de datos: eventos, tópicos, verdad terreno
-│   └── etapa2_kafka.md          # despliegue de Kafka en EC2 paso a paso
+│   └── etapa2_kafka.md          # detalle de Kafka en EC2
 ├── infra/
 │   ├── ec2/setup.sh             # instala Docker y clona el repo en Amazon Linux 2023
-│   └── kafka/                   # docker-compose: Kafka, tópicos, Kafka UI, bronze-sink, simulador
+│   ├── kafka/                   # docker-compose: Kafka, tópicos, Kafka UI, bronze-sink, simulador
+│   └── airflow/                 # docker-compose de Airflow 3 y DAGs (carga batch, ETL en EMR)
 ├── ingestion/bronze_sink/       # consumidor Kafka → S3 bronce (al menos una vez)
+├── spark/jobs/                  # PySpark: bronce → plata → oro (EMR 7, Spark 3.5)
 └── simulator/
     ├── guardian_sim/
     │   ├── engine.py            # tablero 8x8 (bitboard), piezas, colocación, solver
@@ -66,6 +71,25 @@ python -m guardian_sim --sink kafka --bootstrap <ip-ec2>:9092 --speed 3600
 ```
 
 Con la misma semilla, los dos mundos tienen exactamente los mismos jugadores; solo cambia la política. Eso es lo que permite atribuir las diferencias a la manipulación.
+
+## Capas del data lake
+
+| Capa | Contenido | Formato |
+|---|---|---|
+| Bronce | Eventos tal como llegan de Kafka o del histórico batch, por fecha y hora del evento | JSONL (gzip) |
+| Plata | Eventos validados, tipados y sin duplicados; dimensiones; verdad terreno. Los inválidos quedan en `_quarantine/` | Parquet por `dt` |
+| Oro | `player_daily`, `harm_daily` (dos mundos) y `forced_deals_daily` (auditoría) | Parquet por `dt` |
+
+Las tablas de plata y oro quedan registradas en el Glue Data Catalog (base `guardian`) y se consultan con Athena.
+
+Para probar el ETL sin AWS, con PySpark local:
+
+```bash
+pip install pyspark==3.5.7
+cd spark/jobs
+spark-submit --master "local[2]" --py-files common.py bronze_to_silver.py --lake ../../data/ab --dates 2026-11-16 --dims
+spark-submit --master "local[2]" --py-files common.py silver_to_gold.py  --lake ../../data/ab --dates 2026-11-16
+```
 
 ## Cómo funciona el simulador
 

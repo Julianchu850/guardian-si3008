@@ -28,7 +28,7 @@ def load(root: str | Path) -> dict[str, pd.DataFrame]:
         "game": _read(root, "bronze/game-events/dt=*/hr=*/*.jsonl"),
         "ads": _read(root, "bronze/ad-events/dt=*/hr=*/*.jsonl"),
         "labels": _read(root, "truth/deal_labels/dt=*/*.jsonl"),
-        "truth": pd.read_json(root / "truth/players_truth.jsonl", lines=True),
+        "truth": _read(root, "truth/players_truth/*.jsonl"),
     }
 
 

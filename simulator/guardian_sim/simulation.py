@@ -98,7 +98,7 @@ def create_players(n: int, policy: str, seed: int, days: int) -> list[Player]:
             counts[prof] = counts.get(prof, 0) + 1
             pol = "predatory" if (counts[prof] + offsets[prof]) % 2 else "neutral"
         players.append(Player(
-            player_id=f"p{i:05d}", profile=prof, traits=sample_traits(prof, rng), policy=pol,
+            player_id=f"p{seed}-{i:05d}", profile=prof, traits=sample_traits(prof, rng), policy=pol,
             country=ads.sample_choice(rng, ads.COUNTRY_SHARE),
             platform=ads.sample_choice(rng, ads.PLATFORM_SHARE),
             device_tier=ads.sample_choice(rng, ads.DEVICE_SHARE),

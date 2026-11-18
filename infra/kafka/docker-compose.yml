@@ -100,7 +100,10 @@ services:
     depends_on:
       kafka-init:
         condition: service_completed_successfully
-    command: ["--sink", "kafka", "--bootstrap", "kafka:29092",
+    # Dimensiones y verdad terreno quedan en GUARDIAN_DATA para que Airflow las suba (etapa 3)
+    volumes:
+      - ${GUARDIAN_DATA:-/home/ec2-user/guardian-data}/sim:/out
+    command: ["--sink", "kafka", "--bootstrap", "kafka:29092", "--out", "/out/stream-split-s42",
               "--players", "200", "--days", "2", "--speed", "3600", "--policy", "split"]
 
 volumes:

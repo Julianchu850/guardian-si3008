@@ -33,9 +33,10 @@ def serialize(event: dict) -> dict:
 
 
 class FileSink:
-    def __init__(self, out_dir: str | Path, run_id: str):
+    def __init__(self, out_dir: str | Path, run_id: str, events: bool = True):
         self.root = Path(out_dir)
         self.run_id = run_id
+        self.events = events
 
     def _append(self, path: Path, rows) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -44,6 +45,8 @@ class FileSink:
                 f.write(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n")
 
     def write_events(self, events: list[dict]) -> None:
+        if not self.events:
+            return
         parts: dict[tuple[str, str, str], list[dict]] = defaultdict(list)
         for e in events:
             s = serialize(e)

@@ -51,20 +51,21 @@ def main(argv=None) -> None:
     args = ap.parse_args(argv)
 
     run_id = f"{args.policy}-s{args.seed}"
-    files = FileSink(args.out, run_id) if args.sink in ("files", "both") else None
+    # Las dimensiones batch y la verdad terreno siempre van a --out: no viajan por Kafka.
+    # Los eventos van a archivos, a Kafka o a ambos según --sink.
+    files = FileSink(args.out, run_id, events=args.sink in ("files", "both"))
     kafka = KafkaSink(args.bootstrap, args.speed) if args.sink in ("kafka", "both") else None
     sink = MultiSink(*[s for s in (files, kafka) if s])
 
     players = create_players(args.players, args.policy, args.seed, args.days)
-    if files:
-        files.write_table("batch/players/players.jsonl",
-                          [p.observable(day_start_ts(args.start_date, p.install_day)) for p in players])
-        files.write_table("batch/catalog/pieces.jsonl",
-                          [{"piece_id": p.id, "name": p.name, "size": p.size,
-                            "height": p.height, "width": p.width} for p in engine.PIECES])
-        files.write_table("batch/catalog/offers.jsonl",
-                          [{"offer_id": o, "price_usd": pr} for o, pr in OFFERS])
-        files.write_table("truth/players_truth.jsonl", [p.truth() for p in players])
+    files.write_table(f"batch/players/part-{run_id}.jsonl",
+                      [p.observable(day_start_ts(args.start_date, p.install_day)) for p in players])
+    files.write_table("batch/catalog/pieces.jsonl",
+                      [{"piece_id": p.id, "name": p.name, "size": p.size,
+                        "height": p.height, "width": p.width} for p in engine.PIECES])
+    files.write_table("batch/catalog/offers.jsonl",
+                      [{"offer_id": o, "price_usd": pr} for o, pr in OFFERS])
+    files.write_table(f"truth/players_truth/part-{run_id}.jsonl", [p.truth() for p in players])
 
     t0 = time.time()
     n_chunks = max(1, args.workers * 4)
