@@ -11,7 +11,7 @@ Caso de referencia: Omolewa, A. (2026). *How Block Blast harvests its players fo
 | Etapa | Contenido | Estado |
 |---|---|---|
 | **1. Simulador** | Motor del juego, políticas, agentes con perfiles, eventos | ✅ Lista |
-| 2. Ingesta streaming | Kafka (KRaft) en Docker sobre EC2, productor y consumidor a S3 bronce | Pendiente |
+| **2. Ingesta streaming** | Kafka (KRaft) en Docker sobre EC2, productor y consumidor a S3 bronce | ✅ Lista: [guía](docs/etapa2_kafka.md) |
 | 3. Batch y orquestación | Airflow en Docker: DAGs de carga, EMR/Spark bronce → plata → oro | Pendiente |
 | 4. Guardián (ML) | Variables, modelo de riesgo, scoring con Spark Structured Streaming, tópico `interventions` | Pendiente |
 | 5. Dashboard | Comparación "dos mundos" sobre la capa oro (Athena) | Pendiente |
@@ -20,8 +20,14 @@ Caso de referencia: Omolewa, A. (2026). *How Block Blast harvests its players fo
 ## Estructura
 
 ```
-guardian/
-├── docs/esquema_eventos.md      # contrato de datos: eventos, tópicos, verdad terreno
+guardian-si3008/
+├── docs/
+│   ├── esquema_eventos.md       # contrato de datos: eventos, tópicos, verdad terreno
+│   └── etapa2_kafka.md          # despliegue de Kafka en EC2 paso a paso
+├── infra/
+│   ├── ec2/setup.sh             # instala Docker y clona el repo en Amazon Linux 2023
+│   └── kafka/                   # docker-compose: Kafka, tópicos, Kafka UI, bronze-sink, simulador
+├── ingestion/bronze_sink/       # consumidor Kafka → S3 bronce (al menos una vez)
 └── simulator/
     ├── guardian_sim/
     │   ├── engine.py            # tablero 8x8 (bitboard), piezas, colocación, solver

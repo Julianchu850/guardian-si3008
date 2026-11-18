@@ -78,14 +78,16 @@ class KafkaSink:
     speed = 0 publica tan rápido como se pueda.
     """
 
-    def __init__(self, bootstrap: str, speed: float = 3600.0):
-        try:
-            from confluent_kafka import Producer
-        except ImportError as exc:  # pragma: no cover
-            raise SystemExit("Instala confluent-kafka: pip install confluent-kafka") from exc
-        self.producer = Producer({"bootstrap.servers": bootstrap, "linger.ms": 50,
-                                  "compression.type": "gzip",
-                                  "client.id": os.environ.get("HOSTNAME", "guardian-sim")})
+    def __init__(self, bootstrap: str, speed: float = 3600.0, producer=None):
+        if producer is None:
+            try:
+                from confluent_kafka import Producer
+            except ImportError as exc:  # pragma: no cover
+                raise SystemExit("Instala confluent-kafka: pip install confluent-kafka") from exc
+            producer = Producer({"bootstrap.servers": bootstrap, "linger.ms": 50,
+                                 "compression.type": "gzip", "acks": "all",
+                                 "client.id": os.environ.get("HOSTNAME", "guardian-sim")})
+        self.producer = producer
         self.speed = speed
         self._t0_sim: float | None = None
         self._t0_real = 0.0
