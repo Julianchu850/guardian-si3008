@@ -1,0 +1,22 @@
+# Etapa 5 — dashboard "tres mundos" (Streamlit sobre Athena).
+#   cp .env.example .env && nano .env
+#   docker compose up -d --build
+#   http://<ip-publica>:8501
+# Usa las credenciales del rol de la EC2 (LabInstanceProfile).
+
+name: guardian-dashboard
+
+services:
+  dashboard:
+    build: ../../dashboard
+    container_name: guardian-dashboard
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      GUARDIAN_BACKEND: athena
+      GUARDIAN_LAKE: ${GUARDIAN_LAKE:?falta GUARDIAN_LAKE en .env}
+      ATHENA_DATABASE: ${ATHENA_DATABASE:-guardian}
+      ATHENA_OUTPUT: ${ATHENA_OUTPUT:-}
+      ATHENA_WORKGROUP: ${ATHENA_WORKGROUP:-primary}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}

@@ -90,6 +90,7 @@ aws emr create-default-roles
 | 8080 | Kafka UI |
 | 8081 | Airflow |
 | 9092 | Kafka, para publicar desde su portátil (opcional) |
+| 8501 | Dashboard (etapa 5) |
 
 > Nunca pongan `0.0.0.0/0`: Kafka no tiene contraseña. Si cambian de red (casa, universidad), editen las reglas con la nueva *My IP*.
 
@@ -249,7 +250,17 @@ GROUP BY policy, rule ORDER BY forzados DESC;
 
 Detalle y resultados: [etapa4_guardian.md](etapa4_guardian.md).
 
-### C6. Antes de cerrar
+### C6. Dashboard (etapa 5)
+
+```bash
+cd ~/guardian-si3008/infra/dashboard
+cp .env.example .env && nano .env      # GUARDIAN_LAKE=s3://<bucket>/guardian
+docker compose up -d --build
+```
+
+Abran **http://\<ip-publica\>:8501** y elijan la población **p42**. Detalle: [etapa5_dashboard.md](etapa5_dashboard.md).
+
+### C7. Antes de cerrar
 
 - **EMR → Clusters:** que no quede ninguno en *Waiting* o *Running*. Airflow los apaga, y además se apagan solos tras 1 hora ociosos, pero revisen.
 - La EC2 se detiene sola al terminar la sesión; no hace falta borrarla.
@@ -267,6 +278,7 @@ Detalle y resultados: [etapa4_guardian.md](etapa4_guardian.md).
 cd ~/guardian-si3008 && git pull
 cd infra/kafka && ./set-host.sh
 cd ../airflow && docker compose up -d
+cd ../dashboard && docker compose up -d
 ```
 
 ---

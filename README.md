@@ -16,7 +16,7 @@ Caso de referencia: Omolewa, A. (2026). *How Block Blast harvests its players fo
 | **2. Ingesta streaming** | Kafka (KRaft) en Docker sobre EC2, productor y consumidor a S3 bronce | ✅ Lista: [guía](docs/etapa2_kafka.md) |
 | **3. Batch y orquestación** | Airflow 3 en Docker: carga batch a S3 y ETL en EMR/Spark bronce → plata → oro, con calidad y catálogo Glue | ✅ Lista |
 | **4. Guardián (ML)** | Variables por reparto, modelo de riesgo, servicio de streaming sobre Kafka y modo embebido (tercer mundo) | ✅ Lista: [detalle](docs/etapa4_guardian.md) |
-| 5. Dashboard | Comparación "dos mundos" sobre la capa oro (Athena) | Pendiente |
+| **5. Dashboard** | Streamlit sobre Athena: tres mundos, manipulación por regla y perfil, métricas del guardián | ✅ Lista: [detalle](docs/etapa5_dashboard.md) |
 | 6. Juego web (opcional) | FastAPI + navegador en EC2 para jugadores reales (`source = human`) | Pendiente |
 
 ## Estructura
@@ -27,14 +27,18 @@ guardian-si3008/
 │   ├── guia_aws_lab.md          # qué crear en el Learner Lab y cómo correr todo
 │   ├── esquema_eventos.md       # contrato de datos: eventos, tópicos, verdad terreno
 │   ├── etapa2_kafka.md          # detalle de Kafka en EC2
-│   └── etapa4_guardian.md       # el guardián: variables, modelo, resultados
+│   ├── etapa4_guardian.md       # el guardián: variables, modelo, resultados
+│   └── etapa5_dashboard.md      # dashboard tres mundos
 ├── infra/
 │   ├── ec2/setup.sh             # instala Docker y clona el repo en Amazon Linux 2023
 │   ├── kafka/                   # docker-compose: Kafka, tópicos, Kafka UI, bronze-sink, simulador
-│   └── airflow/                 # docker-compose de Airflow 3 y DAGs (carga batch, ETL en EMR)
+│   ├── airflow/                 # docker-compose de Airflow 3 y DAGs (carga batch, ETL, entrenamiento)
+│   └── dashboard/               # docker-compose del dashboard
 ├── ingestion/bronze_sink/       # consumidor Kafka → S3 bronce (al menos una vez)
 ├── spark/jobs/                  # PySpark: bronce → plata → oro y variables del guardián (EMR 7, Spark 3.5)
 ├── guardian_ml/                 # el guardián: variables, entrenamiento, servicio de streaming
+├── dashboard/                   # Streamlit: tres mundos (Athena en AWS, DuckDB en local)
+├── sql/athena/                  # consultas para el informe
 └── simulator/
     ├── guardian_sim/
     │   ├── engine.py            # tablero 8x8 (bitboard), piezas, colocación, solver
