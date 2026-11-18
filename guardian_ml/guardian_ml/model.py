@@ -5,6 +5,7 @@ import json
 import math
 import os
 import tempfile
+import warnings
 from functools import lru_cache
 from pathlib import Path
 
@@ -88,7 +89,9 @@ class RiskModel:
             fast = _FastTrees(self.model)
             rng = np.random.default_rng(0)
             x = rng.uniform(0, 5, size=(200, len(self.features)))
-            ref = self.model.predict_proba(x)[:, 1]
+            with warnings.catch_warnings():  # se le pasa numpy sin nombres de columnas a propósito
+                warnings.simplefilter("ignore", UserWarning)
+                ref = self.model.predict_proba(x)[:, 1]
             mine = np.array([fast.proba(row.tolist()) for row in x])
             return fast if np.allclose(ref, mine, atol=1e-9) else None
         except Exception:  # otra versión de scikit-learn: se usa predict_proba
@@ -102,7 +105,9 @@ class RiskModel:
         row = [float(feats[f]) for f in self.features]
         if self.fast is not None:
             return self.fast.proba(row)
-        return float(self.model.predict_proba(np.array([row]))[0, 1])
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            return float(self.model.predict_proba(np.array([row]))[0, 1])
 
 
 def model_uri_from_env() -> str:
